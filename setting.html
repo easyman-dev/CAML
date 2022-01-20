@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <meta http-equiv="X-UA-Compatible" content="ie=edge"/>
+    <title>奖项设置</title>
+    <link rel="stylesheet" href="css/reset.css"/>
+    <link rel="stylesheet" href="js/element-ui@2.15.6/lib/theme-chalk/index.css">
+    <script src="js/polyfill.min.js"></script>
+    <script src="js/vue.min.js"></script>
+    <script src="js/element-ui@2.15.6/lib/index.js"></script>
+    <script src="js/awards.js"></script>
+    <script src="js/members.js"></script>
+    <script lang="javascript" src="./js/xlsx.core.min.js"></script>
+    <style>
+        .el-input {
+            width: 120px;
+        }
+
+        .el-table {
+            margin-bottom: 10px;
+        }
+
+        * {
+            cursor: initial;
+        }
+
+        .awards, .members {
+            width: 80%;
+            margin: auto;
+            margin-top: 50px;
+        }
+
+        h1 {
+            font-size: 30px;
+            text-align: center;
+            line-height: 1.5;
+            margin-bottom: 20px;
+        }
+
+        h1 span {
+            font-size: 16px;
+        }
+
+        a {
+            text-decoration: underline;
+            cursor: pointer;
+        }
+    </style>
+</head>
+
+<body>
+<div id="app">
+    <div class="awards">
+        <h1>奖项设置 <span>（请按抽奖顺序添加）</span></h1>
+        <el-table :data="tableDataForAwards" style="width: 100%">
+            <el-table-column :prop="item.prop" :label="item.label" width="180" v-for="(item, index) in awardColumns"
+                             :key="index">
+                <template slot-scope="scope">
+                    <div>
+                        <div v-if="scope.row.editing[item.prop]">
+                            <el-input size="mini" v-model="scope.row[item.prop]"
+                                      @blur="onSaveCell(scope.row, item.prop)"></el-input>
+                        </div>
+                        <div v-else @dblclick="onEditCell(scope.row, item.prop, $event)">
+                            {{ scope.row[item.prop] || '(请填写)' }}
+                        </div>
+                    </div>
+                </template>
+            </el-table-column>
+            <el-table-column prop="address" label="操作">
+                <template slot-scope="scope">
+                    <el-button size="small" @click="onAddAward(scope.row, scope.$index)" type="primary">
+                        增加
+                    </el-button>
+                    <el-button size="small" @click="onRemoveAward(scope.row, scope.$index)" type="danger">
+                        删除
+                    </el-button>
+                </template>
+            </el-table-column>
+        </el-table>
+        <el-button size="small" type="primary" @click="onAddAward(null, -1)" v-show="tableDataForAwards.length===0">增加
+        </el-button>
+
+        <h1>中奖列表<span>（抽奖后不可更改）</span></h1>
+        <el-table :data="tableDataForResults" style="width: 100%;">
+            <el-table-column :prop="item.prop"
+                             :label="item.label"
+                             v-for="(item, index) in resultColumns"
+                             :key="index">
+            </el-table-column>
+        </el-table>
+
+        <h1>抽奖</h1>
+        <span>每次开奖抽取人数(支持一轮开启多次抽奖)：</span>
+        <el-select size="small" v-model="batchNumber" @change="onChangeBatchNumber">
+            <el-option v-for="index in 50" :key="index" :label="index" :value="index"></el-option>
+        </el-select>
+        <el-button size="small" type="danger" @click="onResetResult">重置中奖结果</el-button>
+        <a href="./index.html" target="_blank">
+            <el-button size="small" type="primary">去抽奖</el-button>
+        </a>
+        <el-button size="small" type="success" @click="exportExcel">导出Excel</el-button>
+        <!--        <el-button size="small" type="warning" @click="serverMR">全部重置(err!)</el-button>-->
+    </div>
+
+    <div class="members" style="padding-bottom: 60px">
+        <h1>参与人员列表(共{{tableDataForMembers.length}}人)</h1>
+        <el-table :data="tableDataForMembers" style="width: 100%" stripe>
+            <el-table-column :prop="item.prop" :label="item.label" width="180" v-for="(item, index) in memberColumns"
+                             :key="index">
+                <template slot-scope="scope">
+                    <div>
+                        <div v-if="scope.row.editing[item.prop]">
+                            <el-input size="mini" v-model="scope.row[item.prop]"
+                                      @blur="onSaveCell(scope.row, item.prop)"></el-input>
+                        </div>
+                        <div v-else @dblclick="onEditCell(scope.row, item.prop, $event)">
+                            {{ scope.row[item.prop] || '(请填写)' }}
+                        </div>
+                    </div>
+                </template>
+            </el-table-column>
+            <el-table-column prop="address" label="操作">
+                <template slot-scope="scope">
+                    <el-button size="small" @click="onRemoveMember(scope.row, scope.$index)" type="danger">
+                        删除
+                    </el-button>
+
+                </template>
+            </el-table-column>
+        </el-table>
+        <el-button size="small" @click="onAddMember" type="primary">增加一条记录</el-button>
+        <el-upload :on-change="importExcel" :auto-upload="false" style="margin-top: 10px">
+            <el-button size="small" type="success">导入Excel重置</el-button>
+            <div slot="tip" class="el-upload__tip">只能上传xls/xlsx文件，且不超过500kb</div>
+        </el-upload>
+        <!--        <el-button size="small" type="warning" @click="onImport">重置</el-button>-->
+    </div>
+</div>
+<script>
+    new Vue({
+        el: '#app',
+        data: {
+            batchNumber: 10,
+            awardColumns: [
+                {
+                    prop: 'name',
+                    label: '名称',
+                },
+                {
+                    prop: 'count',
+                    label: '数量',
+                },
+                {
+                    prop: 'award',
+                    label: '奖品',
+                },
+                {
+                    prop: 'remark',
+                    label: '开奖人',
+                },
+            ],
+            tableDataForAwards: [],
+            memberColumns: [
+                {
+                    prop: 'id',
+                    label: 'ID',
+                },
+                {
+                    prop: 'name',
+                    label: '姓名',
+                },
+                {
+                    prop: 'workNo',
+                    label: '工号',
+                },
+            ],
+            tableDataForMembers: [],
+            // 开奖结果列表
+            resultColumns: [
+                {
+                    prop: 'name',
+                    label: '奖项',
+                },
+                {
+                    prop: 'number',
+                    label: '中奖号码',
+                },
+                {
+                    prop: 'award',
+                    label: '奖品/人',
+                },
+            ],
+            tableDataForResults: [],
+        },
+        computed: {
+            awards() {
+                return this.tableDataForAwards
+                    .filter(function (item) {
+                        return item.name && item.count;
+                    })
+                    .map(function (item) {
+                        return {
+                            name: item.name,
+                            count: item.count,
+                            award: item.award,
+                            remark: item.remark,
+                        };
+                    });
+            },
+            members() {
+                return this.tableDataForMembers
+                    .filter(function (item) {
+                        return item.name && item.id;
+                    })
+                    .map(function (item) {
+                        return {
+                            workNo: item.workNo,
+                            name: item.name,
+                            id: item.id,
+                        };
+                    });
+            },
+        },
+        methods: {
+            importExcel(file, fileList) {
+                if (!file.raw) return;
+                const rawFile = file.raw;
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    const data = e.currentTarget.result;
+                    const wb = XLSX.read(data, {type: 'binary'});
+                    const jsonData = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
+                    this.tableDataForMembers = jsonData.map((item, index) => {
+                        return {
+                            id: index + 1,
+                            name: item["姓名"],
+                            workNo: item["工号"],
+                            editing: {},
+                        };
+                    });
+                    this.saveData();
+                };
+                reader.readAsBinaryString(rawFile);
+            },
+            exportExcel() {
+                const data = [];
+                const awards = JSON.parse(localStorage.getItem('awards')) || [];
+                const results = JSON.parse(localStorage.getItem('results')) || [];
+                if (results.length > awards.length) return this.$message.error('无法导出，数据被破坏了！');
+                if (results.length === 0) return this.$message.error('无法导出，没有开奖记录了！');
+
+                results.forEach((items, round) => {
+                    items.forEach(item => {
+                        data.push({
+                            "开奖人": awards[round].remark,
+                            "奖项": awards[round].name,
+                            "中奖人": item.name,
+                            "工号": item.workNo,
+                            "奖品": awards[round].award,
+                        })
+                    })
+                });
+                const wsheet = XLSX.utils.json_to_sheet(data);
+                wsheet['!cols'] = [
+                    {wch: 10}, {wch: 10}, {wch: 10},
+                    {wch: 10}, {wch: 10},
+                ];
+                const wbook = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(wbook, wsheet, '开奖结果');
+                XLSX.writeFile(wbook, '开奖结果.xlsx')
+            },
+            onResetResult() {
+                this.$confirm(
+                    '重置会清空所有抽奖结果，无法撤销！',
+                    '确定要重置吗？',
+                    {
+                        confirmButtonText: '确定',
+                        cancelButtonText: '取消',
+                        type: 'warning',
+                    },
+                ).then(() => {
+                    localStorage.removeItem('results');
+                    localStorage.removeItem('players');
+                    const results = [];
+                    this.awards.forEach((_, index) => results[index] = results[index] || []);
+                    this.tableDataForResults = results.map(function (items, round) {
+                        return {
+                            name: ((awards[round]?.remark ? awards[round]?.remark + ': ' : '') + awards[round]?.name),
+                            number: (items.reduce(function (previousValue, currentValue) {
+                                return (previousValue ? previousValue + "、" : previousValue) + currentValue.name;
+                            }, "")) || "等待开奖",
+                            editing: {},
+                        };
+                    });
+                });
+            },
+            onChangeBatchNumber(value) {
+                //每次批量抽取几个中奖数量
+                localStorage.setItem('batchNumber', value);
+            },
+            onSaveCell(row, key) {
+                this.$set(row.editing, key, false);
+                this.saveData();
+            },
+            onEditCell(row, key, e) {
+                this.$set(row.editing, key, true);
+                const parent = e.target.parentNode;
+                this.$nextTick(() => {
+                    // console.log(parent.innerHTML, row)
+                    parent.querySelector('input').focus();
+                });
+            },
+            onAddAward(row, index) {
+                console.log(row, index);
+                this.tableDataForAwards.splice(index + 1, 0, {
+                    editing: {
+                        name: true,
+                    },
+                });
+            },
+            onRemoveAward(row, index) {
+                this.tableDataForAwards.splice(index, 1);
+                this.saveData();
+            },
+            onAddMember() {
+                this.tableDataForMembers.push({
+                    editing: {
+                        name: true,
+                    },
+                });
+            },
+            onRemoveMember(row, index) {
+                this.$confirm('删除不可撤销！可重新添加', '确定删除吗？', {
+                    confirmButtonText: '确定',
+                    cancelButtonText: '取消',
+                    type: 'warning',
+                }).then(() => {
+                    this.tableDataForMembers.splice(index, 1);
+                    this.saveData();
+                });
+            },
+            onImport() {
+                this.$confirm('重新导入会覆盖现有人员列表', '确定重置吗？', {
+                    confirmButtonText: '确定',
+                    cancelButtonText: '取消',
+                    type: 'warning',
+                }).then(() => {
+                    this.tableDataForMembers = window.members.map(function (item) {
+                        return {
+                            id: item.id,
+                            name: item.name,
+                            workNo: item.workNo,
+                            editing: {},
+                        };
+                    });
+                    this.saveData();
+                });
+            },
+            saveData(type) {
+                localStorage.setItem('awards', JSON.stringify(this.awards));// 奖项列表
+                localStorage.setItem('members', JSON.stringify(this.members));// 全体人员列表
+                localStorage.setItem('players', JSON.stringify(this.members));// 参与抽奖人员列表
+                localStorage.setItem('batchNumber', JSON.stringify(this.batchNumber));//每次最大抽奖人数
+                // localStorage.removeItem('results');// 清空开奖结果
+            },
+        },
+        created() {
+            const awards = JSON.parse(localStorage.getItem('awards')) || window.awards;
+            const members = JSON.parse(localStorage.getItem('members')) || window.members;
+            const results = JSON.parse(localStorage.getItem('results')) || [];
+            awards.forEach((_, index) => results[index] = results[index] || []);
+
+            this.batchNumber = +localStorage.getItem('batchNumber') || 10;
+            this.tableDataForAwards = awards.map((item) => {
+                return {
+                    name: item.name,
+                    count: item.count,
+                    award: item.award,
+                    remark: item.remark,
+                    editing: {},
+                };
+            });
+            this.tableDataForMembers = members.map((item) => {
+                return {
+                    id: item.id,
+                    name: item.name,
+                    workNo: item.workNo,
+                    editing: {},
+                };
+            });
+            this.tableDataForResults = results.map((items, round) => {
+                return {
+                    name: awards[round]?.remark + ': ' + awards[round]?.name,
+                    number: (items.reduce(function (previousValue, currentValue) {
+                        return (previousValue ? previousValue + "、" : previousValue) + currentValue.name;
+                    }, "")) || "等待开奖",
+                    award: awards[round]?.award,
+                    editing: {},
+                };
+            });
+            // init data save
+            this.saveData();
+        },
+    });
+</script>
+</body>
+
+</html>

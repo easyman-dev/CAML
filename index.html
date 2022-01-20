@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="zh" xmlns:c="http://www.w3.org/1999/XSL/Transform">
+<head>
+    <meta charset="UTF-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <meta http-equiv="X-UA-Compatible" content="IE=EDGE"/>
+    <meta name="description" content="成都联宇创新科技股份有限公司"/>
+    <title>成都联宇创新科技股份有限公司年会抽奖</title>
+    <link rel="stylesheet" href="css/style.css"/>
+    <link rel="stylesheet" href="css/reset.css"/>
+<!--    <link rel="stylesheet" href="https://unpkg.com/element-ui/lib/theme-chalk/index.css">-->
+    <link rel="stylesheet" href="js/element-ui@2.15.6/lib/theme-chalk/index.css">
+    <script src="js/polyfill.min.js"></script>
+    <script type="text/javascript" src="js/tagcanvas.min.js"></script>
+    <script src="js/vue.min.js"></script>
+    <script src="js/element-ui@2.15.6/lib/index.js"></script>
+    <script src="js/awards.js"></script>
+    <script src="js/members.js"></script>
+</head>
+
+<body>
+<div id="app" class="bg">
+    <div class="next title" v-if="awards.length>0">
+            <span class="title">
+            {{awards[currentRound].name}}({{results[currentRound].length}}/{{awards[currentRound].count}})
+        </span>
+        <span v-show="awards[currentRound].award">
+            <b>奖品：</b>{{awards[currentRound].award }}
+        </span>
+    </div>
+    <div class="batch flexbox" v-show="!running && batchLuckyGuys.length>0">
+        <div class="player" v-for="(item, index) in batchLuckyGuys" :key="index" @click="onKick(item)">
+            {{item.name}}
+        </div>
+    </div>
+    <div class="result" v-show="batchLuckyGuys.length==0">
+        <div @click="onKick(item, index)" class="lucky-dog" v-for="(item, index) in results[currentRound]" :key="index">
+            {{item.name}}
+        </div>
+    </div>
+    <div id="myCanvasContainer">
+        <canvas width="300" height="300" id="myCanvas" ref="canvas">
+            <p>换个现代浏览器吧！</p>
+        </canvas>
+    </div>
+    <div id="tags">
+        <ul>
+            <li v-for="(tag, index) in members" :key="index">
+                <a href="#" target="_blank" style="height: auto;font-size: 40px">
+                    {{tag.name}}
+                </a>
+            </li>
+        </ul>
+    </div>
+    <div class="buttons">
+        <el-select v-model="currentRound" size="large" style="width: 180px">
+            <el-option v-for="(item, index) in awards"
+                       :key="index"
+                       :label="item.remark+': '+item.name"
+                       :value="index">
+            </el-option>
+        </el-select>
+        <el-button size="large" ref="actionLottery" :disabled="buttonDisabled" type="danger" @click="toggle">
+            <audio id="mainMusic" src="audio/main.mp3" loop autoplay="autoplay"></audio>
+            <audio id="winMusic" src="audio/win.mp3" autoplay></audio>
+            {{buttonText}}
+        </el-button>
+        <el-button size="large" ref="actionNextRound" :disabled="goOn || running" @click="onNext">下一轮</el-button>
+        <el-button size="large"
+                   icon="el-icon-refresh"
+                   :disabled="running"
+                   type="warning"
+                   @click="onReplay"
+                   circle>
+        </el-button>
+        <span style="color: #FFF; margin-left:10px;">剩余人数：{{players.length}}</span>
+    </div>
+</div>
+<script type="text/javascript">
+    new Vue({
+        el: '#app',
+        data: {
+            running: false,
+            awards: [],// 每轮的抽奖列表
+            currentRound: 0,// 当前轮
+            results: [],// 每轮的抽奖结果
+            players: [],// 剩余参与者列表
+            batchLuckyGuys: [],// 本批中奖者
+            members: [],// 全体参与者列表
+        },
+        watch: {
+            currentRound() {
+                this.batchLuckyGuys = [];
+            },
+        },
+        computed: {
+            buttonDisabled() {
+                return this.results[this.currentRound].length >= this.awards[this.currentRound].count
+                    || this.players.length === 0;
+            },
+            goOn() {
+                return this.results[this.currentRound].length < this.awards[this.currentRound].count
+                    && this.results[this.currentRound].length > 0;
+            },
+            buttonText() {
+                if (this.running) return '停止';
+                if (this.goOn) return '继续';
+                return '开始';
+            },
+        },
+        methods: {
+            toggle() {
+                if (this.running) {
+                    this.stop();
+                    stopMain();
+                    palyWin();
+                } else {
+                    this.start();
+                    stopWin();
+                    playMain();
+                }
+            },
+            getSpeed() {
+                return [0.1 * Math.random() + 0.01, -(0.1 * Math.random() + 0.01)];
+            },
+            start() {
+                this.running = true;
+                TagCanvas.SetSpeed('myCanvas', [5, 1]);
+            },
+            lottery(arr) {
+                // 添加到中奖列表，并移除参与列表
+                arr.push(this.players.splice(this.getRandomInt(0, this.players.length - 1), 1)[0]);
+            },
+            stop() {
+                this.running = false;
+                TagCanvas.SetSpeed('myCanvas', this.getSpeed());
+                this.results[this.currentRound] = this.results[this.currentRound] || [];
+                const todo = this.awards[this.currentRound].count - this.results[this.currentRound].length;
+                const batchNumber = +localStorage.getItem('batchNumber') || 10;
+                const batchLuckyGuys = [];
+                for (let i = 0, maxValid = Math.min(batchNumber, todo, this.players.length); i < maxValid; i++) {
+                    this.lottery(batchLuckyGuys);
+                }
+                this.batchLuckyGuys = batchLuckyGuys;
+                // 重新设置开奖结果
+                this.results.splice(this.currentRound, 1, this.results[this.currentRound].concat(batchLuckyGuys));
+                localStorage.setItem('players', JSON.stringify(this.players));
+                localStorage.setItem('results', JSON.stringify(this.results));
+                TagCanvas.Reload('myCanvas');
+            },
+            onNext() {
+                this.batchLuckyGuys = [];
+                // this.currentRound = (this.currentRound + 1) % this.awards.length;
+                if (this.currentRound < this.awards.length - 1) this.currentRound += 1;
+            },
+            getRandomInt(min, max) {
+                min = Math.ceil(min);
+                max = Math.floor(max);
+                return Math.floor(Math.random() * (max - min + 1)) + min;
+            },
+            init() {
+                try {
+                    TagCanvas.Start('myCanvas', 'tags', {
+                        textColour: null,
+                        dragControl: 1,
+                        decel: 0.95,
+                        textHeight: 14,
+                        minSpeed: 0.01,
+                        initial: [
+                            0.1 * Math.random() + 0.01,
+                            -(0.1 * Math.random() + 0.01),
+                        ],
+                    });
+                } catch (e) {
+                    // something went wrong, hide the canvas container
+                    document.getElementById('myCanvasContainer').style.display = 'none';
+                }
+            },
+            onReplay() {
+                this.$confirm('重新抽奖会清空当前奖项的结果，无法撤销！', '确定要重新抽奖吗？', {
+                    confirmButtonText: '确定',
+                    cancelButtonText: '取消',
+                    type: 'warning',
+                }).then(() => {
+                    this.batchLuckyGuys = [];
+                    const p = this.results.splice(this.currentRound, 1, []);
+                    this.players = this.players.concat(p[0]);
+                    localStorage.setItem('players', JSON.stringify(this.players));
+                    localStorage.setItem('results', JSON.stringify(this.results));
+                });
+            },
+            onKeyup(e) {
+                // 回车进入下一轮
+                if (e.keyCode === 13) {
+                    return this.$refs.actionNextRound.$el.click();
+                }
+                // 空格控制开始和停止
+                if (e.keyCode === 32) {
+                    return this.$refs.actionLottery.$el.click();
+                }
+            },
+            copy(obj) {
+                return JSON.parse(JSON.stringify(obj));
+            },
+            onKick(player) {
+                const index = this.results[this.currentRound].indexOf(player);
+                this.$confirm('去掉后可继续抽一名', '去掉这名中奖者吗？', {
+                    confirmButtonText: '确定',
+                    cancelButtonText: '取消',
+                    type: 'warning',
+                }).then(() => {
+                    if (this.batchLuckyGuys.indexOf(player) > -1) {
+                        this.batchLuckyGuys.splice(this.batchLuckyGuys.indexOf(player), 1);
+                    }
+                    this.results[this.currentRound].splice(index, 1);
+                    localStorage.setItem('results', JSON.stringify(this.results));
+                });
+            },
+        },
+        created() {
+            this.awards = JSON.parse(localStorage.getItem('awards')) || window.awards || [];
+            this.members = JSON.parse(localStorage.getItem('members')) || [];
+            if (this.awards.length === 0) {
+                this.$alert('还未设置奖项', {
+                    confirmButtonText: '去设置',
+                    callback: action => {
+                        return location.href = 'setting.html';
+                    },
+                });
+            }
+            if (this.members.length === 0) {
+                this.$alert('还未设置参与人员', {
+                    confirmButtonText: '去设置',
+                    callback: action => {
+                        return location.href = 'setting.html';
+                    },
+                });
+            }
+            let results = JSON.parse(localStorage.getItem('results')) || [];
+            this.awards.forEach((_, index) => {
+                results[index] = results[index] || [];
+            });
+            this.results = results;
+        },
+        mounted() {
+            const members = JSON.parse(localStorage.getItem('members')) || [];
+            this.players = JSON.parse(localStorage.getItem('players')) || members;
+            this.members = this.copy(members);
+            localStorage.setItem('players', JSON.stringify(this.players));
+            const canvas = this.$refs.canvas;
+            canvas.width = document.body.offsetWidth;
+            canvas.height = document.body.offsetHeight;
+            this.$nextTick(() => {
+                this.init();
+            });
+            document.body.addEventListener('keyup', this.onKeyup)
+        },
+    });
+
+    window.onload = function () {
+        //打开页面时无音乐
+        stopMain();
+        stopMain();
+    };
+
+    function playMain() {
+        const audio = document.getElementById('mainMusic');
+        if (audio.paused) {
+            try {
+                audio.play();
+            } catch (e) {
+                console.error(e)
+            }
+        } else {
+            try {
+                audio.pause();
+            } catch (e) {
+                console.error(e)
+            }
+        }
+    }
+
+    function palyWin() {
+        const audio = document.getElementById('winMusic');
+        if (audio.paused) {
+            try {
+                audio.play();
+            } catch (e) {
+                console.error(e)
+            }
+        } else {
+            try {
+                audio.pause();
+            } catch (e) {
+                console.error(e)
+            }
+        }
+    }
+
+    function stopMain() {
+        const audio = document.getElementById('mainMusic');
+        if (audio.played) {
+            try {
+                audio.pause();
+            } catch (e) {
+                console.error(e)
+            }
+        }
+    }
+
+    function stopWin() {
+        const audio = document.getElementById('winMusic');
+        if (audio.played) {
+            try {
+                audio.pause();
+            } catch (e) {
+                console.error(e)
+            }
+        }
+    }
+</script>
+</body>
+
+</html>
