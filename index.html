@@ -46,7 +46,7 @@
     <div id="tags">
         <ul>
             <li v-for="(tag, index) in members" :key="index">
-                <a href="#" target="_blank" style="height: auto;font-size: 40px">
+                <a href="#" target="_self" style="height: auto; font-size: 40px">
                     {{tag.name}}
                 </a>
             </li>
@@ -164,10 +164,14 @@
             init() {
                 try {
                     TagCanvas.Start('myCanvas', 'tags', {
-                        textColour: null,
+                        textColour: "#fff",
+                        outlineColour: '#fff',
+                        outlineMethod: "outline",
+                        outlineRadius: "20",
+                        wheelZoom: false,
                         dragControl: 1,
                         decel: 0.95,
-                        textHeight: 14,
+                        textHeight: 15,
                         minSpeed: 0.01,
                         initial: [
                             0.1 * Math.random() + 0.01,
@@ -263,7 +267,6 @@
     window.onload = function () {
         //打开页面时无音乐
         stopMain();
-        stopMain();
     };
 
     function playMain() {
@@ -304,6 +307,7 @@
         const audio = document.getElementById('mainMusic');
         if (audio.played) {
             try {
+                audio.currentTime = 0;
                 audio.pause();
             } catch (e) {
                 console.error(e)
@@ -315,6 +319,7 @@
         const audio = document.getElementById('winMusic');
         if (audio.played) {
             try {
+                audio.currentTime = 0;
                 audio.pause();
             } catch (e) {
                 console.error(e)

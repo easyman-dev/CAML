@@ -153,7 +153,7 @@
     new Vue({
         el: '#app',
         data: {
-            activeName: 'first',
+            activeName: 'second',
             batchNumber: 10,
             awardColumns: [
                 {
@@ -380,11 +380,13 @@
             },
         },
         created() {
-            const awards = JSON.parse(localStorage.getItem('awards')) || window.awards;
-            const members = JSON.parse(localStorage.getItem('members')) || window.members;
+            const awards = JSON.parse(localStorage.getItem('awards')) || window.awards || [];
+            const members = JSON.parse(localStorage.getItem('members')) || window.members || [];
             const results = JSON.parse(localStorage.getItem('results')) || [];
             awards.forEach((_, index) => results[index] = results[index] || []);
 
+            if (awards.length === 0) this.activeName = "first";
+            else if (members.length === 0) this.activeName = "third";
             this.batchNumber = +localStorage.getItem('batchNumber') || 10;
             this.tableDataForAwards = awards.map((item) => {
                 return {
